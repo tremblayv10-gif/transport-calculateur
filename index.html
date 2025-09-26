@@ -115,6 +115,11 @@
 
           <div class="rounded-2xl overflow-hidden ring-1 ring-blue-100">
             <div id="map"></div>
+            <div class="flex flex-wrap gap-3 justify-center mt-4">
+  <button onclick="presetPlace('alma')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Alma</button>
+  <button onclick="presetPlace('saguenay')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Saguenay</button>
+  <button onclick="presetPlace('quebec')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Québec</button>
+</div>
           </div>
 
           <p class="text-sm text-gray-600 mt-3">
@@ -391,6 +396,30 @@
       if (routingControl) { map.removeControl(routingControl); routingControl = null; }
     }
     function resetRoute() {
+      const presetCoords = {
+  alma: [48.550, -71.650],
+  saguenay: [48.428, -71.068],
+  quebec: [46.813, -71.208]
+};
+
+function presetPlace(city) {
+  const coords = presetCoords[city];
+  if (!coords) return;
+
+  // logique : si départ pas encore posé → départ, sinon destination
+  if (!startMarker) {
+    placeStart(L.latLng(coords[0], coords[1]));
+    map.setView(coords, 10);
+  } else if (!endMarker) {
+    placeEnd(L.latLng(coords[0], coords[1]));
+    map.setView(coords, 10);
+  } else {
+    // si les deux existent déjà → reset et recommence par départ
+    resetRoute();
+    placeStart(L.latLng(coords[0], coords[1]));
+    map.setView(coords, 10);
+  }
+}
       clearRoute();
       if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
       if (endMarker)   { map.removeLayer(endMarker);   endMarker   = null; }
@@ -479,3 +508,4 @@
   </script>
 </body>
 </html>
+
