@@ -6,22 +6,10 @@
   <title>Calculateur de Prix - D.A Transport</title>
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Leaflet + Routing Machine (OSM/OSRM, pas de clé API) -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"
-  />
+  <!-- Leaflet + Routing Machine -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
 
   <style>
@@ -29,18 +17,17 @@
     .gradient-bg { background:#282828; }
     .card-shadow { box-shadow:0 25px 50px -12px rgba(0,0,0,.25); }
     .price-highlight { background:#2D8DFD; animation:pulse-glow 2s ease-in-out infinite alternate; }
-    @keyframes pulse-glow {
-      0%{box-shadow:0 0 20px rgba(45,141,253,.4);}
-      100%{box-shadow:0 0 40px rgba(45,141,253,.6);}
-    }
+    @keyframes pulse-glow { 0%{box-shadow:0 0 20px rgba(45,141,253,.4);} 100%{box-shadow:0 0 40px rgba(45,141,253,.6);} }
     .interactive-card{ transition:all .3s ease; cursor:pointer;}
     .interactive-card:hover{ transform:translateY(-5px); box-shadow:0 20px 40px rgba(0,0,0,.15);}
     .interactive-card.selected{ background:#2D8DFD; color:#fff; transform:scale(1.05);}
     .floating-element{ animation:float 6s ease-in-out infinite;}
     @keyframes float{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
     /* Carte */
-    #map { height: 360px; border-radius: 1rem; overflow: hidden; }
-    .leaflet-routing-container { border-radius: .75rem; }
+    #map { height: 420px; border-radius: 1rem; overflow: hidden; }
+    .leaflet-container { cursor: crosshair; }
+    .toolbar-btn { @apply px-3 py-2 rounded-lg text-sm font-semibold border; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen py-8">
@@ -70,11 +57,9 @@
     <div class="grid xl:grid-cols-3 gap-8">
       <!-- Calculateur Interactif -->
       <div class="xl:col-span-2 bg-white rounded-3xl card-shadow p-8">
-        <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">
-          Calculateur Interactif
-        </h2>
+        <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Calculateur Interactif</h2>
 
-        <!-- Distance via CARTE (remplace la jauge) -->
+        <!-- Distance via CARTE -->
         <div class="mb-10">
           <div class="flex items-start justify-between mb-4">
             <div class="text-lg font-bold text-gray-700 flex items-center">
@@ -88,17 +73,24 @@
             </div>
           </div>
 
+          <!-- Barre d’outils anti-embed-bugs -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button id="btnStart" class="toolbar-btn border-blue-600 text-blue-700 bg-blue-50">Placer Départ</button>
+            <button id="btnEnd" class="toolbar-btn border-emerald-600 text-emerald-700 bg-emerald-50">Placer Destination</button>
+            <button id="btnReset" class="toolbar-btn border-gray-400 text-gray-700 bg-gray-50">Réinitialiser</button>
+            <span class="text-xs text-gray-500 italic">Astuce: double-clic pose la destination rapidement.</span>
+          </div>
+
           <div class="rounded-2xl overflow-hidden">
             <div id="map"></div>
           </div>
 
           <p class="text-sm text-gray-600 mt-3">
-            Cliquez une fois pour définir le <strong>départ</strong>, puis une deuxième fois pour la <strong>destination</strong>. 
-            Vous pouvez ensuite <strong>glisser</strong> les marqueurs pour ajuster le trajet.
+            Cliquez une fois pour poser le point <strong>sélectionné</strong> (départ/destination), puis glissez les marqueurs pour ajuster.
           </p>
         </div>
 
-        <!-- Poids avec jauge simple (inchangé visuellement) -->
+        <!-- Poids -->
         <div class="mb-10">
           <div class="flex items-center justify-between mb-4">
             <label class="text-lg font-bold text-gray-700 flex items-center">
@@ -280,7 +272,7 @@
     let currentWeight = 0;
     let supplements = { difficultZone: false, urgentDelivery: false };
 
-    /* --------- LOGIQUE "POIDS" (inchangée) --------- */
+    /* --------- POIDS --------- */
     function updateWeight(value) {
       currentWeight = parseFloat(value);
       document.getElementById('weightValue').textContent = currentWeight;
@@ -348,16 +340,14 @@
             <div class="font-semibold mb-2">📦 Poids</div>
             <div class="text-sm">${currentWeight.toFixed(1)} kg</div>
             <div class="text-lg font-bold">${weightSupplement > 0 ? '+' + weightSupplement + '$' : 'Inclus'}</div>
-          </div>
-      `;
+          </div>`;
       if (supplementsList.length > 0) {
         breakdown += `
           <div class="md:col-span-2">
             <div class="font-semibold mb-2">⚡ Suppléments</div>
             <div class="text-sm">${supplementsList.join(', ')}</div>
             <div class="text-lg font-bold">+${otherSupplements}$</div>
-          </div>
-        `;
+          </div>`;
       }
       breakdown += '</div>';
       document.getElementById('breakdown').innerHTML = breakdown;
@@ -372,74 +362,94 @@
       alert(`🎉 Merci pour votre intérêt !\n\nPrix estimé: ${totalPrice}\n\n📞 Notre équipe vous contactera sous peu pour finaliser votre devis.\n\n✨ D.A Transport - Votre partenaire de confiance !`);
     }
 
-    /* --------- CARTE LEAFLET + ROUTAGE --------- */
-    let startMarker = null, endMarker = null, routingControl = null;
+    /* --------- CARTE LEAFLET + ROUTAGE (avec fallbacks) --------- */
+    let map, startMarker = null, endMarker = null, routingControl = null;
+    let placementMode = 'start'; // 'start' ou 'end'
 
     function setDistanceFromRoute(km) {
-      currentDistance = km;
-      document.getElementById('distanceValue').textContent = km.toFixed(1);
+      currentDistance = km || 0;
+      document.getElementById('distanceValue').textContent = km ? km.toFixed(1) : '0';
       calculatePrice();
     }
 
-    function initMap() {
-      // Centre par défaut : Alma, QC
-      const alma = [48.550, -71.650];
+    function clearRoute() {
+      if (routingControl) { map.removeControl(routingControl); routingControl = null; }
+    }
+    function resetRoute() {
+      clearRoute();
+      if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+      if (endMarker)   { map.removeLayer(endMarker);   endMarker   = null; }
+      setDistanceFromRoute(0);
+    }
 
-      const map = L.map('map').setView(alma, 9);
+    function placeStart(latlng) {
+      if (!startMarker) {
+        startMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Départ').openPopup();
+        startMarker.on('dragend', updateRoute);
+      } else {
+        startMarker.setLatLng(latlng);
+      }
+      updateRoute();
+    }
+    function placeEnd(latlng) {
+      if (!endMarker) {
+        endMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Destination').openPopup();
+        endMarker.on('dragend', updateRoute);
+      } else {
+        endMarker.setLatLng(latlng);
+      }
+      updateRoute();
+    }
+
+    function updateRoute() {
+      if (!(startMarker && endMarker)) { setDistanceFromRoute(0); return; }
+      clearRoute();
+      routingControl = L.Routing.control({
+        waypoints: [ startMarker.getLatLng(), endMarker.getLatLng() ],
+        routeWhileDragging: true,
+        draggableWaypoints: true,
+        show: false,
+        addWaypoints: false,
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+        createMarker: () => null
+      })
+      .on('routesfound', (e) => {
+        const meters = e.routes[0].summary.totalDistance;
+        setDistanceFromRoute(meters / 1000);
+      })
+      .addTo(map);
+    }
+
+    function initMap() {
+      const alma = [48.550, -71.650];
+      map = L.map('map', { tap: false }).setView(alma, 9);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // Click pour placer départ puis destination
+      // Empêche les conteneurs parents (embeds) d’intercepter les événements
+      L.DomEvent.disableScrollPropagation(map.getContainer());
+      L.DomEvent.disableClickPropagation(map.getContainer());
+
+      // Clic normal : place le point selon le mode sélectionné
       map.on('click', (e) => {
-        if (!startMarker) {
-          startMarker = L.marker(e.latlng, { draggable: true }).addTo(map).bindPopup('Départ').openPopup();
-          startMarker.on('dragend', updateRoute);
-        } else if (!endMarker) {
-          endMarker = L.marker(e.latlng, { draggable: true }).addTo(map).bindPopup('Destination').openPopup();
-          endMarker.on('dragend', updateRoute);
-          updateRoute(); // on a les 2 points → calcule la route
-        } else {
-          // Si les deux existent déjà, on déplace la destination
-          endMarker.setLatLng(e.latlng);
-          updateRoute();
-        }
+        if (placementMode === 'start') placeStart(e.latlng);
+        else placeEnd(e.latlng);
+        // Bascule auto vers destination après avoir placé le départ
+        if (startMarker && !endMarker) placementMode = 'end';
       });
 
-      function updateRoute() {
-        if (!(startMarker && endMarker)) return;
+      // Double-clic : raccourci pour placer directement la destination
+      map.on('dblclick', (e) => {
+        placeEnd(e.latlng);
+      });
 
-        // Supprime l'ancien contrôle de routage si présent
-        if (routingControl) {
-          map.removeControl(routingControl);
-          routingControl = null;
-        }
-
-        routingControl = L.Routing.control({
-          waypoints: [
-            startMarker.getLatLng(),
-            endMarker.getLatLng()
-          ],
-          routeWhileDragging: true,
-          draggableWaypoints: true,
-          show: false,
-          addWaypoints: false,
-          // OSRM public demo server
-          router: L.Routing.osrmv1({
-            serviceUrl: 'https://router.project-osrm.org/route/v1'
-          }),
-          createMarker: function() { return null; } // on garde nos propres marqueurs
-        })
-        .on('routesfound', function(e) {
-          const route = e.routes[0];
-          const meters = route.summary.totalDistance;
-          const km = meters / 1000;
-          setDistanceFromRoute(km);
-        })
-        .addTo(map);
-      }
+      // Boutons de la toolbar
+      document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
+      document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
+      document.getElementById('btnReset').addEventListener('click', resetRoute);
     }
 
     window.addEventListener('load', function() {
