@@ -6,9 +6,9 @@
   <title>Calculateur de Prix - D.A Transport</title>
 
   <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Font Awesome (icônes cohérentes) -->
+  <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
 
   <!-- Leaflet + Routing Machine -->
@@ -48,6 +48,10 @@
     .gauge-container { position: relative; width: 120px; height: 120px; margin: 0 auto; }
     .gauge-bg { fill: none; stroke: #e5e7eb; stroke-width: 12; stroke-linecap: round; }
     .gauge-fill { fill: none; stroke: #10b981; stroke-width: 12; stroke-linecap: round; transition: stroke-dasharray .2s ease; }
+
+    /* Onglets */
+    .tab-active { background:#eff6ff; color:#1d4ed8; } /* bg-blue-50 + text-blue-700 */
+    .tab-inactive { color:#4b5563; } /* text-gray-600 */
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-white min-h-screen py-8">
@@ -85,19 +89,28 @@
       <div class="xl:col-span-2 bg-white rounded-3xl card-shadow p-8">
         <h2 class="text-3xl font-bold text-blue-900 mb-8 text-center">Calculateur Interactif</h2>
 
-        <!-- Distance via CARTE -->
+        <!-- Distance (carte ou adresses) -->
         <div class="mb-10">
           <div class="flex items-start justify-between mb-4">
-            <div class="text-lg font-bold text-gray-700">Distance (carte)</div>
+            <div class="text-lg font-bold text-gray-700">Distance</div>
             <div class="text-right">
               <span id="distanceValue" class="text-2xl font-bold text-blue-600">0</span>
               <span class="text-gray-500 ml-1">km</span>
-              <div id="distanceCategory" class="text-xs font-semibold text-gray-600">Sélectionnez 2 points</div>
+              <div id="distanceCategory" class="text-xs font-semibold text-gray-600">Sélectionnez une méthode</div>
               <div id="distancePrice" class="text-sm font-bold text-blue-600">0.00$</div>
             </div>
           </div>
 
-          <!-- Barre d’outils -->
+          <!-- Sélecteur de mode -->
+          <div class="mb-3 flex items-center gap-2">
+            <span class="text-sm font-semibold text-gray-600">Mode :</span>
+            <div class="inline-flex rounded-lg overflow-hidden ring-1 ring-gray-200">
+              <button id="tabMap" class="px-4 py-2 text-sm font-semibold tab-active">Carte</button>
+              <button id="tabForm" class="px-4 py-2 text-sm font-semibold tab-inactive hover:bg-gray-50">Adresses</button>
+            </div>
+          </div>
+
+          <!-- Barre d’outils (commune) -->
           <div class="flex flex-wrap gap-2 mb-3">
             <button id="btnStart" class="toolbar-btn border border-blue-600 text-blue-700 bg-blue-50">Placer Départ</button>
             <button id="btnEnd" class="toolbar-btn border border-emerald-600 text-emerald-700 bg-emerald-50">Placer Destination</button>
@@ -105,10 +118,10 @@
             <span class="text-xs text-gray-500 italic">Astuce : double-clic pose la destination rapidement.</span>
           </div>
 
-          <div class="rounded-2xl overflow-hidden ring-1 ring-blue-100">
-            <div id="map"></div>
-
-            <!-- PRESETS -->
+          <!-- PANNEAU CARTE -->
+          <div id="panelMap" class="rounded-2xl overflow-hidden ring-1 ring-blue-100">
+            <div id="map" style="min-height:420px"></div>
+            <!-- Presets -->
             <div class="flex flex-wrap gap-3 justify-center mt-4 px-4 pb-4">
               <button onclick="presetPlace('alma')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Alma</button>
               <button onclick="presetPlace('saguenay')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Saguenay</button>
@@ -116,8 +129,27 @@
             </div>
           </div>
 
+          <!-- PANNEAU FORMULAIRE ADRESSES -->
+          <div id="panelForm" class="hidden rounded-2xl ring-1 ring-blue-100 p-4">
+            <div class="grid md:grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label for="addrStart" class="text-sm font-semibold text-gray-700">Départ</label>
+                <input id="addrStart" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+              </div>
+              <div class="space-y-1">
+                <label for="addrEnd" class="text-sm font-semibold text-gray-700">Destination</label>
+                <input id="addrEnd" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-3 mt-3">
+              <button id="btnGeocode" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:opacity-90">Calculer l’itinéraire</button>
+              <button id="btnUseGPS" class="px-4 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200">Utiliser ma position pour le départ</button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Astuce : vous pouvez entrer “Alma”, “Saguenay”, “Québec” ou des adresses complètes.</p>
+          </div>
+
           <p class="text-sm text-gray-600 mt-3">
-            Cliquez pour poser le point <strong>sélectionné</strong> (départ/destination), puis glissez les marqueurs pour ajuster.
+            Choisissez la <strong>Carte</strong> pour cliquer vos points, ou <strong>Adresses</strong> pour saisir vos localités. Vous pouvez toujours ajuster les marqueurs ensuite.
           </p>
         </div>
 
@@ -297,7 +329,7 @@
       const percentage = (currentWeight / 150) * 100;
       const circumference = 2 * Math.PI * 50;
       const dashArray = (percentage / 100) * circumference;
-      document.getElementById('weightGauge').style.strokeDasharray = \`\${dashArray} \${circumference}\`;
+      document.getElementById('weightGauge').style.strokeDasharray = `${dashArray} ${circumference}`;
 
       calculatePrice();
     }
@@ -319,7 +351,7 @@
       else if (currentDistance > 0) { basePrice = 100; pricePerKm = 0.30; distanceCategory = '201+ km'; }
 
       const distancePrice = basePrice + (currentDistance * pricePerKm);
-      document.getElementById('distanceCategory').textContent = currentDistance > 0 ? distanceCategory : 'Aucune distance';
+      document.getElementById('distanceCategory').textContent = currentDistance > 0 ? distanceCategory : 'Sélectionnez une méthode';
       document.getElementById('distancePrice').textContent = distancePrice.toFixed(2) + '$';
 
       // Poids
@@ -366,7 +398,7 @@
 
     function requestQuote() {
       const totalPrice = document.getElementById('totalPrice').textContent;
-      alert(\`🎉 Merci pour votre intérêt !\n\nPrix estimé: \${totalPrice}\n\n📞 Notre équipe vous contactera sous peu pour finaliser votre devis.\n\n✨ D.A Transport - Votre partenaire de confiance !\`);
+      alert(`🎉 Merci pour votre intérêt !\n\nPrix estimé: ${totalPrice}\n\n📞 Notre équipe vous contactera sous peu pour finaliser votre devis.\n\n✨ D.A Transport - Votre partenaire de confiance !`);
     }
 
     /* --------- CARTE LEAFLET + ROUTAGE --------- */
@@ -446,7 +478,7 @@
 
       if (placementMode === 'start' || !startMarker) {
         placeStart(ll);
-        placementMode = 'end'; // bascule auto vers destination
+        placementMode = 'end'; // bascule auto
       } else if (placementMode === 'end' || !endMarker) {
         placeEnd(ll);
       } else {
@@ -458,6 +490,56 @@
       map.setView(ll, 10);
     }
 
+    /* --------- GÉOCODAGE (ADRESSES) --------- */
+    async function geocode(q) {
+      // Nominatim: requête simple (ville/région/adresse)
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`;
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const j = await r.json();
+      return j[0] ? L.latLng(+j[0].lat, +j[0].lon) : null;
+    }
+
+    async function geocodeAndRoute() {
+      const a = document.getElementById('addrStart').value.trim();
+      const b = document.getElementById('addrEnd').value.trim();
+      if (!a || !b) { alert("Veuillez entrer les deux adresses / villes."); return; }
+
+      const [llA, llB] = await Promise.all([geocode(a), geocode(b)]);
+      if (!llA || !llB) { alert("Impossible de localiser l’une des adresses. Essayez un libellé plus précis."); return; }
+
+      placeStart(llA);
+      placeEnd(llB);
+
+      // Ajuste la vue
+      const bounds = L.latLngBounds([llA, llB]).pad(0.4);
+      map.fitBounds(bounds);
+      placementMode = 'start'; // prêt pour modifier le départ si besoin
+    }
+
+    /* --------- ONGLET CARTE / ADRESSES --------- */
+    function showPanel(which) {
+      const panelMap = document.getElementById('panelMap');
+      const panelForm = document.getElementById('panelForm');
+      const tabMap = document.getElementById('tabMap');
+      const tabForm = document.getElementById('tabForm');
+
+      if (which === 'map') {
+        panelMap.classList.remove('hidden');
+        panelForm.classList.add('hidden');
+        tabMap.classList.add('tab-active'); tabMap.classList.remove('tab-inactive');
+        tabForm.classList.add('tab-inactive'); tabForm.classList.remove('tab-active');
+
+        // Réveille Leaflet
+        setTimeout(()=> { if (map) { map.invalidateSize(); } }, 50);
+      } else {
+        panelForm.classList.remove('hidden');
+        panelMap.classList.add('hidden');
+        tabForm.classList.add('tab-active'); tabForm.classList.remove('tab-inactive');
+        tabMap.classList.add('tab-inactive'); tabMap.classList.remove('tab-active');
+      }
+    }
+
+    /* --------- INIT --------- */
     function initMap() {
       if (!window.L) {
         console.error('Leaflet non chargé.');
@@ -471,7 +553,7 @@
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      // S’assure que la carte prend bien tout l’espace
+      // Assure le rendu initial
       setTimeout(() => { map.invalidateSize(); }, 0);
 
       // Empêche les conteneurs parents d’intercepter les événements
@@ -487,16 +569,32 @@
 
       // Double-clic : place directement la destination
       map.on('dblclick', (e) => { placeEnd(e.latlng); });
-
-      // Boutons de la toolbar
-      document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
-      document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
-      document.getElementById('btnReset').addEventListener('click', resetRoute);
     }
 
+    // Listeners UI
     window.addEventListener('load', function() {
       initMap();
       calculatePrice();
+
+      document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
+      document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
+      document.getElementById('btnReset').addEventListener('click', resetRoute);
+
+      document.getElementById('tabMap').addEventListener('click', ()=>showPanel('map'));
+      document.getElementById('tabForm').addEventListener('click', ()=>showPanel('form'));
+
+      document.getElementById('btnGeocode').addEventListener('click', geocodeAndRoute);
+      document.getElementById('btnUseGPS').addEventListener('click', () => {
+        if (!navigator.geolocation) return alert("Géolocalisation non disponible");
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+          placeStart(ll);
+          map.setView(ll, 12);
+          // si l'autre champ est rempli, on peut auto-géocoder la destination
+          const dest = document.getElementById('addrEnd').value.trim();
+          if (dest) geocode(dest).then(llB => { if (llB) { placeEnd(llB); map.fitBounds(L.latLngBounds([ll,llB]).pad(0.4)); } });
+        }, ()=>alert("Impossible d'obtenir la position."));
+      });
     });
   </script>
 </body>
