@@ -24,10 +24,31 @@
     .floating-element{ animation:float 6s ease-in-out infinite;}
     @keyframes float{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
 
-    /* Carte */
-    #map { height: 420px; border-radius: 1rem; overflow: hidden; }
+    /* Carte (responsive) */
+    #map { height: clamp(260px, 45vh, 420px); border-radius: 1rem; overflow: hidden; }
     .leaflet-container { cursor: crosshair; }
-    .toolbar-btn { @apply px-3 py-2 rounded-lg text-sm font-semibold border; }
+
+    /* Boutons de la barre d’outils – la classe utilitaire reste en HTML */
+    .toolbar-btn { /* Pour CDN Tailwind, évite @apply ici */ }
+
+    /* ===== Jauge circulaire de poids (corrige le "gros rond noir" et l'overlay) ===== */
+    .gauge-container{
+      position: relative;          /* ancre le contenu centré */
+      width: 120px;
+      height: 120px;
+      margin: 0 auto;              /* centre la jauge */
+    }
+    .gauge-container svg{ display:block; }
+    .gauge-bg, .gauge-fill{
+      fill: none;                  /* PAS de remplissage noir */
+      stroke-width: 12;
+    }
+    .gauge-bg{ stroke: #e5e7eb; }  /* gris clair (tailwind gray-200) */
+    .gauge-fill{
+      stroke: #22c55e;             /* vert (tailwind green-500) */
+      stroke-linecap: round;
+      transition: stroke-dasharray .3s ease;
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen py-8">
@@ -73,11 +94,11 @@
             </div>
           </div>
 
-          <!-- Barre d’outils anti-embed-bugs -->
+          <!-- Barre d’outils -->
           <div class="flex flex-wrap gap-2 mb-3">
-            <button id="btnStart" class="toolbar-btn border-blue-600 text-blue-700 bg-blue-50">Placer Départ</button>
-            <button id="btnEnd" class="toolbar-btn border-emerald-600 text-emerald-700 bg-emerald-50">Placer Destination</button>
-            <button id="btnReset" class="toolbar-btn border-gray-400 text-gray-700 bg-gray-50">Réinitialiser</button>
+            <button id="btnStart" class="toolbar-btn px-3 py-2 rounded-lg text-sm font-semibold border border-blue-600 text-blue-700 bg-blue-50">Placer Départ</button>
+            <button id="btnEnd" class="toolbar-btn px-3 py-2 rounded-lg text-sm font-semibold border border-emerald-600 text-emerald-700 bg-emerald-50">Placer Destination</button>
+            <button id="btnReset" class="toolbar-btn px-3 py-2 rounded-lg text-sm font-semibold border border-gray-400 text-gray-700 bg-gray-50">Réinitialiser</button>
             <span class="text-xs text-gray-500 italic">Astuce: double-clic pose la destination rapidement.</span>
           </div>
 
@@ -114,9 +135,9 @@
           <!-- Jauge circulaire poids -->
           <div class="gauge-container">
             <svg width="120" height="120" class="transform -rotate-90">
-              <circle cx="60" cy="60" r="50" class="gauge-bg"/>
+              <circle cx="60" cy="60" r="50" class="gauge-bg"></circle>
               <circle cx="60" cy="60" r="50" class="gauge-fill" id="weightGauge"
-                      stroke-dasharray="0 314" stroke-dashoffset="0"/>
+                      stroke-dasharray="0 314" stroke-dashoffset="0"></circle>
             </svg>
             <div class="absolute inset-0 flex items-center justify-center">
               <div class="text-center">
@@ -385,77 +406,3 @@
     function placeStart(latlng) {
       if (!startMarker) {
         startMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Départ').openPopup();
-        startMarker.on('dragend', updateRoute);
-      } else {
-        startMarker.setLatLng(latlng);
-      }
-      updateRoute();
-    }
-    function placeEnd(latlng) {
-      if (!endMarker) {
-        endMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Destination').openPopup();
-        endMarker.on('dragend', updateRoute);
-      } else {
-        endMarker.setLatLng(latlng);
-      }
-      updateRoute();
-    }
-
-    function updateRoute() {
-      if (!(startMarker && endMarker)) { setDistanceFromRoute(0); return; }
-      clearRoute();
-      routingControl = L.Routing.control({
-        waypoints: [ startMarker.getLatLng(), endMarker.getLatLng() ],
-        routeWhileDragging: true,
-        draggableWaypoints: true,
-        show: false,
-        addWaypoints: false,
-        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-        createMarker: () => null
-      })
-      .on('routesfound', (e) => {
-        const meters = e.routes[0].summary.totalDistance;
-        setDistanceFromRoute(meters / 1000);
-      })
-      .addTo(map);
-    }
-
-    function initMap() {
-      const alma = [48.550, -71.650];
-      map = L.map('map', { tap: false }).setView(alma, 9);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(map);
-
-      // Empêche les conteneurs parents (embeds) d’intercepter les événements
-      L.DomEvent.disableScrollPropagation(map.getContainer());
-      L.DomEvent.disableClickPropagation(map.getContainer());
-
-      // Clic normal : place le point selon le mode sélectionné
-      map.on('click', (e) => {
-        if (placementMode === 'start') placeStart(e.latlng);
-        else placeEnd(e.latlng);
-        // Bascule auto vers destination après avoir placé le départ
-        if (startMarker && !endMarker) placementMode = 'end';
-      });
-
-      // Double-clic : raccourci pour placer directement la destination
-      map.on('dblclick', (e) => {
-        placeEnd(e.latlng);
-      });
-
-      // Boutons de la toolbar
-      document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
-      document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
-      document.getElementById('btnReset').addEventListener('click', resetRoute);
-    }
-
-    window.addEventListener('load', function() {
-      initMap();
-      calculatePrice();
-    });
-  </script>
-</body>
-</html>
