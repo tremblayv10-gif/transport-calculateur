@@ -52,6 +52,9 @@
     /* Onglets */
     .tab-active { background:#eff6ff; color:#1d4ed8; } /* bg-blue-50 + text-blue-700 */
     .tab-inactive { color:#4b5563; } /* text-gray-600 */
+
+    /* Suggestions (datalist fallback visuel) */
+    input[list]::-webkit-calendar-picker-indicator { display:none !important; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-white min-h-screen py-8">
@@ -134,18 +137,20 @@
             <div class="grid md:grid-cols-2 gap-3">
               <div class="space-y-1">
                 <label for="addrStart" class="text-sm font-semibold text-gray-700">Départ</label>
-                <input id="addrStart" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+                <input id="addrStart" list="dlStart" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+                <datalist id="dlStart"></datalist>
               </div>
               <div class="space-y-1">
                 <label for="addrEnd" class="text-sm font-semibold text-gray-700">Destination</label>
-                <input id="addrEnd" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+                <input id="addrEnd" list="dlEnd" class="border rounded-lg p-3 w-full" placeholder="Adresse, ville ou région"/>
+                <datalist id="dlEnd"></datalist>
               </div>
             </div>
             <div class="flex flex-wrap gap-3 mt-3">
               <button id="btnGeocode" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:opacity-90">Calculer l’itinéraire</button>
               <button id="btnUseGPS" class="px-4 py-2 bg-gray-100 rounded-lg font-semibold hover:bg-gray-200">Utiliser ma position pour le départ</button>
             </div>
-            <p class="text-xs text-gray-500 mt-2">Astuce : vous pouvez entrer “Alma”, “Saguenay”, “Québec” ou des adresses complètes.</p>
+            <p class="text-xs text-gray-500 mt-2">Astuce : entrez “Alma”, “Saguenay”, “Québec”, ou une adresse complète (ex. “505 Rue Sacré-Coeur O, Alma”).</p>
           </div>
 
           <p class="text-sm text-gray-600 mt-3">
@@ -490,30 +495,73 @@
       map.setView(ll, 10);
     }
 
-    /* --------- GÉOCODAGE (ADRESSES) --------- */
+    /* --------- GÉOCODAGE (ADRESSES) + AUTOCOMPLETE --------- */
+    const NOM_BASE = 'https://nominatim.openstreetmap.org';
+    // Biais: pays CA, langue FR, résultats 5, viewbox large (~Québec & provinces voisines)
+    const VIEWBOX = '-80, 63, -56, 44'; // Ouest, Nord, Est, Sud (lon,lat) — approx Est du Canada
+    const NOM_COMMON = '&format=json&addressdetails=0&limit=5&countrycodes=ca&accept-language=fr';
+
+    function biasQuery(q){
+      // Si l’utilisateur n’a pas mis un pays, on ajoute “, Québec, Canada” pour aider
+      const qLower = q.toLowerCase();
+      if (!qLower.includes('canada') && !qLower.includes('qc') && !qLower.includes('québec') && !qLower.includes('quebec')) {
+        return `${q}, Québec, Canada`;
+      }
+      return q;
+    }
+
     async function geocode(q) {
-      // Nominatim: requête simple (ville/région/adresse)
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`;
-      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      const j = await r.json();
-      return j[0] ? L.latLng(+j[0].lat, +j[0].lon) : null;
+      const q2 = biasQuery(q);
+      const url = `${NOM_BASE}/search?q=${encodeURIComponent(q2)}${NOM_COMMON}&viewbox=${encodeURIComponent(VIEWBOX)}&bounded=0`;
+      try {
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        return j[0] ? L.latLng(+j[0].lat, +j[0].lon) : null;
+      } catch (e) {
+        console.error('Geocode error', e);
+        return null;
+      }
+    }
+
+    async function suggest(inputEl, datalistEl){
+      const q = inputEl.value.trim();
+      if (q.length < 2) { datalistEl.innerHTML = ''; return; }
+      const q2 = biasQuery(q);
+      const url = `${NOM_BASE}/search?q=${encodeURIComponent(q2)}${NOM_COMMON}&viewbox=${encodeURIComponent(VIEWBOX)}&bounded=0`;
+      try {
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) return;
+        const arr = await r.json();
+        datalistEl.innerHTML = arr.map(item => `<option value="${item.display_name.replace(/"/g,'&quot;')}"></option>`).join('');
+      } catch(_){ /* silencieux */ }
     }
 
     async function geocodeAndRoute() {
+      const btn = document.getElementById('btnGeocode');
       const a = document.getElementById('addrStart').value.trim();
       const b = document.getElementById('addrEnd').value.trim();
       if (!a || !b) { alert("Veuillez entrer les deux adresses / villes."); return; }
 
-      const [llA, llB] = await Promise.all([geocode(a), geocode(b)]);
-      if (!llA || !llB) { alert("Impossible de localiser l’une des adresses. Essayez un libellé plus précis."); return; }
+      btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Chargement...';
 
+      const [llA, llB] = await Promise.all([geocode(a), geocode(b)]);
+      if (!llA || !llB) {
+        alert("Impossible de localiser l’une des adresses. Essayez un libellé plus précis (ex. rue + ville).");
+        btn.disabled = false; btn.textContent = prev; return;
+      }
+
+      // Place et calcule
       placeStart(llA);
       placeEnd(llB);
 
-      // Ajuste la vue
+      // Ajuste la vue & montre la carte pour visualiser le tracé
       const bounds = L.latLngBounds([llA, llB]).pad(0.4);
-      map.fitBounds(bounds);
-      placementMode = 'start'; // prêt pour modifier le départ si besoin
+      showPanel('map');
+      setTimeout(()=>{ map.fitBounds(bounds); }, 50);
+
+      btn.disabled = false; btn.textContent = prev;
+      placementMode = 'start';
     }
 
     /* --------- ONGLET CARTE / ADRESSES --------- */
@@ -528,7 +576,6 @@
         panelForm.classList.add('hidden');
         tabMap.classList.add('tab-active'); tabMap.classList.remove('tab-inactive');
         tabForm.classList.add('tab-inactive'); tabForm.classList.remove('tab-active');
-
         // Réveille Leaflet
         setTimeout(()=> { if (map) { map.invalidateSize(); } }, 50);
       } else {
@@ -586,15 +633,29 @@
       document.getElementById('btnGeocode').addEventListener('click', geocodeAndRoute);
       document.getElementById('btnUseGPS').addEventListener('click', () => {
         if (!navigator.geolocation) return alert("Géolocalisation non disponible");
-        navigator.geolocation.getCurrentPosition(pos=>{
+        navigator.geolocation.getCurrentPosition(async pos=>{
           const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
           placeStart(ll);
-          map.setView(ll, 12);
-          // si l'autre champ est rempli, on peut auto-géocoder la destination
           const dest = document.getElementById('addrEnd').value.trim();
-          if (dest) geocode(dest).then(llB => { if (llB) { placeEnd(llB); map.fitBounds(L.latLngBounds([ll,llB]).pad(0.4)); } });
+          if (dest) {
+            const llB = await geocode(dest);
+            if (llB) { placeEnd(llB); const bds = L.latLngBounds([ll,llB]).pad(0.4); showPanel('map'); setTimeout(()=> map.fitBounds(bds),50); }
+            else alert("Destination introuvable. Essayez une adresse plus précise.");
+          } else {
+            showPanel('map'); map.setView(ll, 12);
+          }
         }, ()=>alert("Impossible d'obtenir la position."));
       });
+
+      // Autocomplete en direct (debounce léger)
+      const dlStart = document.getElementById('dlStart');
+      const dlEnd = document.getElementById('dlEnd');
+      const inStart = document.getElementById('addrStart');
+      const inEnd = document.getElementById('addrEnd');
+
+      let t1, t2;
+      inStart.addEventListener('input', ()=>{ clearTimeout(t1); t1 = setTimeout(()=>suggest(inStart, dlStart), 250); });
+      inEnd.addEventListener('input', ()=>{ clearTimeout(t2); t2 = setTimeout(()=>suggest(inEnd, dlEnd), 250); });
     });
   </script>
 </body>
