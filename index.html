@@ -1,511 +1,217 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Calculateur de Prix - D.A Transport</title>
+<script>
+  let currentDistance = 0;
+  let currentWeight = 0;
+  let supplements = { difficultZone: false, urgentDelivery: false };
 
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  /* --------- POIDS --------- */
+  function updateWeight(value) {
+    currentWeight = parseFloat(value);
+    document.getElementById('weightValue').textContent = currentWeight;
 
-  <!-- Font Awesome (icônes cohérentes) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+    const percentage = (currentWeight / 150) * 100;
+    const circumference = 2 * Math.PI * 50;
+    const dashArray = (percentage / 100) * circumference;
+    document.getElementById('weightGauge').style.strokeDasharray = `${dashArray} ${circumference}`;
 
-  <!-- Leaflet + Routing Machine -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
-  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-
-  <style>
-    body { box-sizing: border-box; }
-    .gradient-bg { background:#000000; } /* ENTÊTE NOIR */
-    .card-shadow { box-shadow:0 25px 50px -12px rgba(0,0,0,.25); }
-
-    /* Bleu logo */
-    .title-blue { color:#2D8DFD; }
-    .price-highlight { background:#2D8DFD; animation:pulse-glow 2s ease-in-out infinite alternate; }
-    @keyframes pulse-glow { 0%{box-shadow:0 0 20px rgba(45,141,253,.35);} 100%{box-shadow:0 0 40px rgba(45,141,253,.6);} }
-
-    .interactive-card{ transition:all .25s ease; cursor:pointer;}
-    .interactive-card:hover{ transform:translateY(-3px); box-shadow:0 12px 30px rgba(0,0,0,.12);}
-    .interactive-card.selected{ background:#2D8DFD; color:#fff; transform:scale(1.03); border-color:transparent;}
-
-    .floating-element{ animation:float 6s ease-in-out infinite;}
-    @keyframes float{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-
-    /* Carte */
-    #map { height: 420px; border-radius: 1rem; overflow: hidden; }
-    .leaflet-container { cursor: crosshair; }
-
-    /* Boutons toolbar */
-    .toolbar-btn {
-      border-width:1px; border-radius:0.5rem; padding:0.5rem 0.75rem;
-      font-weight:600; font-size:0.875rem; line-height:1.25rem;
-    }
-
-    /* Jauge circulaire poids */
-    .gauge-container { position: relative; width: 120px; height: 120px; margin: 0 auto; }
-    .gauge-bg { fill: none; stroke: #e5e7eb; stroke-width: 12; stroke-linecap: round; }
-    .gauge-fill { fill: none; stroke: #10b981; stroke-width: 12; stroke-linecap: round; transition: stroke-dasharray .2s ease; }
-  </style>
-</head>
-<body class="bg-gradient-to-br from-blue-50 to-white min-h-screen py-8">
-  <div class="max-w-6xl mx-auto px-4">
-    <!-- Header -->
-    <div class="text-center mb-12">
-      <div class="gradient-bg text-white py-8 px-8 rounded-3xl mb-6 card-shadow floating-element">
-        <div class="flex items-center justify-center mb-6">
-          <img
-            src="logo-da-transport.jpg"
-            alt="Logo D.A Transport"
-            class="mr-6 w-24 h-24 object-contain rounded-xl bg-white/10 p-2"
-          />
-          <div class="text-left">
-            <h1 class="text-5xl font-extrabold mb-2 tracking-tight title-blue">D.A Transport</h1>
-            <p class="text-blue-100 text-lg">Votre partenaire transport de confiance</p>
-            <div class="flex items-center justify-start mt-3 gap-2 text-sm">
-              <span class="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
-                <i class="fa-solid fa-gauge-high"></i> Rapide
-              </span>
-              <span class="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
-                <i class="fa-solid fa-shield-halved"></i> Sécurisé
-              </span>
-              <span class="bg-white/20 px-3 py-1 rounded-full flex items-center gap-2">
-                <i class="fa-solid fa-thumbs-up"></i> Fiable
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid xl:grid-cols-3 gap-8">
-      <!-- Calculateur Interactif -->
-      <div class="xl:col-span-2 bg-white rounded-3xl card-shadow p-8">
-        <!-- Icône supprimée devant le titre -->
-        <h2 class="text-3xl font-bold text-blue-900 mb-8 text-center">Calculateur Interactif</h2>
-
-        <!-- Distance via CARTE -->
-        <div class="mb-10">
-          <div class="flex items-start justify-between mb-4">
-            <!-- Icône supprimée -->
-            <div class="text-lg font-bold text-gray-700">Distance (carte)</div>
-            <div class="text-right">
-              <span id="distanceValue" class="text-2xl font-bold text-blue-600">0</span>
-              <span class="text-gray-500 ml-1">km</span>
-              <div id="distanceCategory" class="text-xs font-semibold text-gray-600">Sélectionnez 2 points</div>
-              <div id="distancePrice" class="text-sm font-bold text-blue-600">0.00$</div>
-            </div>
-          </div>
-
-          <!-- Barre d’outils -->
-          <div class="flex flex-wrap gap-2 mb-3">
-            <button id="btnStart" class="toolbar-btn border border-blue-600 text-blue-700 bg-blue-50 flex items-center gap-2">
-              <i class="fa-solid fa-location-dot"></i> Placer Départ
-            </button>
-            <button id="btnEnd" class="toolbar-btn border border-emerald-600 text-emerald-700 bg-emerald-50 flex items-center gap-2">
-              <i class="fa-regular fa-flag"></i> Placer Destination
-            </button>
-            <button id="btnReset" class="toolbar-btn border border-gray-400 text-gray-700 bg-gray-50 flex items-center gap-2">
-              <i class="fa-solid fa-rotate"></i> Réinitialiser
-            </button>
-            <span class="text-xs text-gray-500 italic">Astuce : double-clic pose la destination rapidement.</span>
-          </div>
-
-          <div class="rounded-2xl overflow-hidden ring-1 ring-blue-100">
-            <div id="map"></div>
-            <div class="flex flex-wrap gap-3 justify-center mt-4">
-  <button onclick="presetPlace('alma')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Alma</button>
-  <button onclick="presetPlace('saguenay')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Saguenay</button>
-  <button onclick="presetPlace('quebec')" class="px-4 py-2 bg-blue-100 rounded-lg font-semibold hover:bg-blue-200">Québec</button>
-</div>
-          </div>
-
-          <p class="text-sm text-gray-600 mt-3">
-            Cliquez une fois pour poser le point <strong>sélectionné</strong> (départ/destination), puis glissez les marqueurs pour ajuster.
-          </p>
-        </div>
-
-        <!-- Poids -->
-        <div class="mb-10">
-          <div class="flex items-center justify-between mb-4">
-            <!-- Icône supprimée -->
-            <label class="text-lg font-bold text-gray-700">Poids</label>
-            <div class="text-right">
-              <span id="weightValue" class="text-2xl font-bold text-green-600">0</span>
-              <span class="text-gray-500 ml-1">kg</span>
-            </div>
-          </div>
-
-          <div class="relative mb-2">
-            <input type="range" id="weightSlider" min="0" max="150" value="0"
-                   class="w-full accent-blue-600"
-                   oninput="updateWeight(this.value)">
-            <div class="flex justify-between text-xs text-gray-500 mt-2">
-              <span>0 kg</span><span>75 kg</span><span>150 kg</span>
-            </div>
-          </div>
-
-          <!-- Jauge circulaire poids -->
-          <div class="gauge-container">
-            <svg width="120" height="120" class="transform -rotate-90">
-              <circle cx="60" cy="60" r="50" class="gauge-bg"></circle>
-              <circle cx="60" cy="60" r="50" class="gauge-fill" id="weightGauge"
-                      stroke-dasharray="0 314" stroke-dashoffset="0"></circle>
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center">
-              <div class="text-center">
-                <div id="weightCategory" class="text-xs font-semibold text-gray-600">Inclus</div>
-                <div id="weightPrice" class="text-lg font-bold text-green-600">Inclus</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Suppléments -->
-        <div class="mb-8">
-          <!-- Icône supprimée -->
-          <h3 class="text-lg font-bold text-gray-700 mb-4">Options Supplémentaires</h3>
-          <div class="grid md:grid-cols-2 gap-4">
-            <div class="interactive-card bg-blue-50 p-4 rounded-2xl border-2 border-blue-100"
-                 onclick="toggleSupplement('difficultZone', this)">
-              <div class="text-center">
-                <div class="text-3xl mb-2"><i class="fa-solid fa-mountain text-blue-600"></i></div>
-                <div class="font-semibold text-blue-900">Zone Difficile</div>
-                <div class="text-blue-600 font-bold">+15$</div>
-              </div>
-            </div>
-            <div class="interactive-card bg-blue-50 p-4 rounded-2xl border-2 border-blue-100"
-                 onclick="toggleSupplement('urgentDelivery', this)">
-              <div class="text-center">
-                <div class="text-3xl mb-2"><i class="fa-solid fa-truck-fast text-blue-600"></i></div>
-                <div class="font-semibold text-blue-900">Livraison Urgente</div>
-                <div class="text-blue-600 font-bold">+25$</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Résultat -->
-        <div id="result" class="price-highlight text-white p-8 rounded-2xl text-center">
-          <!-- Icône conservée ici ? C'est un bloc de résultat, pas un titre de section -->
-          <h3 class="text-xl font-semibold mb-4">Prix Total Estimé</h3>
-          <div id="totalPrice" class="text-6xl font-extrabold mb-4 tracking-tight">0.00$</div>
-          <div id="breakdown" class="text-sm opacity-90 bg-white bg-opacity-20 p-4 rounded-xl"></div>
-          <button onclick="requestQuote()"
-            class="mt-6 bg-white px-8 py-3 rounded-xl font-bold hover:bg-gray-100 transition-all duration-200 transform hover:scale-105 text-blue-900">
-            <i class="fa-solid fa-phone mr-2"></i> Demander un Devis Officiel
-          </button>
-        </div>
-      </div>
-
-      <!-- Grille Tarifaire -->
-      <div class="bg-white rounded-3xl card-shadow p-6">
-        <!-- Icône supprimée -->
-        <h2 class="text-2xl font-bold text-blue-900 mb-6 text-center">Nos Tarifs</h2>
-
-        <!-- Distance -->
-        <div class="mb-8">
-          <!-- Icône supprimée -->
-          <h3 class="text-lg font-semibold text-blue-600 mb-4">Par Distance</h3>
-          <div class="space-y-3">
-            <div class="p-4 rounded-xl border-l-4 bg-blue-50" style="border-color:#2D8DFD;">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">0–50 km</span>
-                <span class="font-bold text-blue-600">20$ + 0,50$/km</span>
-              </div>
-            </div>
-            <div class="p-4 rounded-xl border-l-4 bg-blue-50" style="border-color:#2D8DFD;">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">51–200 km</span>
-                <span class="font-bold text-blue-600">50$ + 0,40$/km</span>
-              </div>
-            </div>
-            <div class="p-4 rounded-xl border-l-4 bg-blue-50" style="border-color:#2D8DFD;">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">201+ km</span>
-                <span class="font-bold text-blue-600">100$ + 0,30$/km</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Poids -->
-        <div class="mb-8">
-          <!-- Icône supprimée -->
-          <h3 class="text-lg font-semibold text-green-600 mb-4">Par Poids</h3>
-          <div class="space-y-3">
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">0–10 kg</span>
-                <span class="font-bold text-emerald-600">✅ Inclus</span>
-              </div>
-            </div>
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">11–50 kg</span>
-                <span class="font-bold text-blue-950">+10$</span>
-              </div>
-            </div>
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">51–100 kg</span>
-                <span class="font-bold text-blue-950">+25$</span>
-              </div>
-            </div>
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950">101+ kg</span>
-                <span class="font-bold text-blue-950">+50$</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Services -->
-        <div>
-          <!-- Icône supprimée -->
-          <h3 class="text-lg font-semibold text-purple-600 mb-4">Services Extra</h3>
-          <div class="space-y-3">
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950"><i class="fa-solid fa-mountain text-blue-600 mr-2"></i> Zone difficile</span>
-                <span class="font-bold text-blue-950">+15$</span>
-              </div>
-            </div>
-            <div class="p-3 rounded-xl bg-gray-50">
-              <div class="flex justify-between items-center">
-                <span class="font-medium text-blue-950"><i class="fa-solid fa-truck-fast text-blue-600 mr-2"></i> Livraison urgente</span>
-                <span class="font-bold text-blue-950">+25$</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Contact -->
-        <div class="mt-8 p-4 bg-gradient-to-r from-blue-50 to-white rounded-xl">
-          <!-- Icône supprimée -->
-          <h4 class="font-bold text-blue-900 mb-2">Contact</h4>
-          <div class="text-sm text-blue-950/80 space-y-1">
-            <div><i class="fa-regular fa-envelope mr-2"></i> info@datransport.com</div>
-            <div><i class="fa-solid fa-mobile-screen-button mr-2"></i> (555) 123-4567</div>
-            <div><i class="fa-regular fa-clock mr-2"></i> 24h/7j disponible</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    let currentDistance = 0;
-    let currentWeight = 0;
-    let supplements = { difficultZone: false, urgentDelivery: false };
-
-    /* --------- POIDS --------- */
-    function updateWeight(value) {
-      currentWeight = parseFloat(value);
-      document.getElementById('weightValue').textContent = currentWeight;
-
-      const percentage = (currentWeight / 150) * 100;
-      const circumference = 2 * Math.PI * 50;
-      const dashArray = (percentage / 100) * circumference;
-      document.getElementById('weightGauge').style.strokeDasharray = `${dashArray} ${circumference}`;
-
-      calculatePrice();
-    }
-
-    /* --------- SUPPLÉMENTS --------- */
-    function toggleSupplement(type, element) {
-      supplements[type] = !supplements[type];
-      if (supplements[type]) element.classList.add('selected');
-      else element.classList.remove('selected');
-      calculatePrice();
-    }
-
-    /* --------- PRIX --------- */
-    function calculatePrice() {
-      // Distance
-      let basePrice = 0, pricePerKm = 0, distanceCategory = '0 km';
-      if (currentDistance > 0 && currentDistance <= 50) { basePrice = 20; pricePerKm = 0.50; distanceCategory = '0–50 km'; }
-      else if (currentDistance > 0 && currentDistance <= 200) { basePrice = 50; pricePerKm = 0.40; distanceCategory = '51–200 km'; }
-      else if (currentDistance > 0) { basePrice = 100; pricePerKm = 0.30; distanceCategory = '201+ km'; }
-
-      const distancePrice = basePrice + (currentDistance * pricePerKm);
-      document.getElementById('distanceCategory').textContent = currentDistance > 0 ? distanceCategory : 'Aucune distance';
-      document.getElementById('distancePrice').textContent = distancePrice.toFixed(2) + '$';
-
-      // Poids
-      let weightSupplement = 0, weightCategory = '';
-      if (currentWeight <= 10) { weightSupplement = 0; weightCategory = 'Inclus'; }
-      else if (currentWeight <= 50) { weightSupplement = 10; weightCategory = '+10$'; }
-      else if (currentWeight <= 100) { weightSupplement = 25; weightCategory = '+25$'; }
-      else { weightSupplement = 50; weightCategory = '+50$'; }
-
-      document.getElementById('weightCategory').textContent = weightCategory;
-      document.getElementById('weightPrice').textContent = weightSupplement > 0 ? ('+' + weightSupplement + '$') : 'Inclus';
-
-      // Suppléments
-      let otherSupplements = 0;
-      let supplementsList = [];
-      if (supplements.difficultZone) { otherSupplements += 15; supplementsList.push('<i class="fa-solid fa-mountain text-blue-600"></i> Zone difficile (+15$)'); }
-      if (supplements.urgentDelivery) { otherSupplements += 25; supplementsList.push('<i class="fa-solid fa-truck-fast text-blue-600"></i> Livraison urgente (+25$)'); }
-
-      // Total
-      const totalPrice = distancePrice + weightSupplement + otherSupplements;
-      document.getElementById('totalPrice').textContent = totalPrice.toFixed(2) + '$';
-
-      // Détail
-      let breakdown = `
-        <div class="grid md:grid-cols-2 gap-4 text-left">
-          <div>
-            <div class="font-semibold mb-2">📍 Transport</div>
-            <div class="text-sm">Distance (${currentDistance > 0 ? distanceCategory : '—'})</div>
-            <div class="text-lg font-bold">${distancePrice.toFixed(2)}$</div>
-          </div>
-          <div>
-            <div class="font-semibold mb-2">📦 Poids</div>
-            <div class="text-sm">${currentWeight.toFixed(1)} kg</div>
-            <div class="text-lg font-bold">${weightSupplement > 0 ? ('+' + weightSupplement + '$') : 'Inclus'}</div>
-          </div>
-          <div class="md:col-span-2">
-            <div class="font-semibold mb-2">⚡ Suppléments</div>
-            <div class="text-sm">${supplementsList.length ? supplementsList.join(', ') : 'Aucun'}</div>
-            <div class="text-lg font-bold">${otherSupplements > 0 ? ('+' + otherSupplements + '$') : '0$'}</div>
-          </div>
-        </div>`;
-      document.getElementById('breakdown').innerHTML = breakdown;
-    }
-
-    function requestQuote() {
-      const totalPrice = document.getElementById('totalPrice').textContent;
-      alert(`🎉 Merci pour votre intérêt !\n\nPrix estimé: ${totalPrice}\n\n📞 Notre équipe vous contactera sous peu pour finaliser votre devis.\n\n✨ D.A Transport - Votre partenaire de confiance !`);
-    }
-
-    /* --------- CARTE LEAFLET + ROUTAGE --------- */
-    let map, startMarker = null, endMarker = null, routingControl = null;
-    let placementMode = 'start'; // 'start' ou 'end'
-
-    function setDistanceFromRoute(km) {
-      currentDistance = km || 0;
-      document.getElementById('distanceValue').textContent = km ? km.toFixed(1) : '0';
-      calculatePrice();
-    }
-
-    function clearRoute() {
-      if (routingControl) { map.removeControl(routingControl); routingControl = null; }
-    }
-    function resetRoute() {
-      const presetCoords = {
-  alma: [48.550, -71.650],
-  saguenay: [48.428, -71.068],
-  quebec: [46.813, -71.208]
-};
-
-function presetPlace(city) {
-  const coords = presetCoords[city];
-  if (!coords) return;
-
-  // logique : si départ pas encore posé → départ, sinon destination
-  if (!startMarker) {
-    placeStart(L.latLng(coords[0], coords[1]));
-    map.setView(coords, 10);
-  } else if (!endMarker) {
-    placeEnd(L.latLng(coords[0], coords[1]));
-    map.setView(coords, 10);
-  } else {
-    // si les deux existent déjà → reset et recommence par départ
-    resetRoute();
-    placeStart(L.latLng(coords[0], coords[1]));
-    map.setView(coords, 10);
+    calculatePrice();
   }
-}
-      clearRoute();
-      if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
-      if (endMarker)   { map.removeLayer(endMarker);   endMarker   = null; }
-      setDistanceFromRoute(0);
+
+  /* --------- SUPPLÉMENTS --------- */
+  function toggleSupplement(type, element) {
+    supplements[type] = !supplements[type];
+    if (supplements[type]) element.classList.add('selected');
+    else element.classList.remove('selected');
+    calculatePrice();
+  }
+
+  /* --------- PRIX --------- */
+  function calculatePrice() {
+    // Distance
+    let basePrice = 0, pricePerKm = 0, distanceCategory = '0 km';
+    if (currentDistance > 0 && currentDistance <= 50) { basePrice = 20; pricePerKm = 0.50; distanceCategory = '0–50 km'; }
+    else if (currentDistance > 0 && currentDistance <= 200) { basePrice = 50; pricePerKm = 0.40; distanceCategory = '51–200 km'; }
+    else if (currentDistance > 0) { basePrice = 100; pricePerKm = 0.30; distanceCategory = '201+ km'; }
+
+    const distancePrice = basePrice + (currentDistance * pricePerKm);
+    document.getElementById('distanceCategory').textContent = currentDistance > 0 ? distanceCategory : 'Aucune distance';
+    document.getElementById('distancePrice').textContent = distancePrice.toFixed(2) + '$';
+
+    // Poids
+    let weightSupplement = 0, weightCategory = '';
+    if (currentWeight <= 10) { weightSupplement = 0; weightCategory = 'Inclus'; }
+    else if (currentWeight <= 50) { weightSupplement = 10; weightCategory = '+10$'; }
+    else if (currentWeight <= 100) { weightSupplement = 25; weightCategory = '+25$'; }
+    else { weightSupplement = 50; weightCategory = '+50$'; }
+
+    document.getElementById('weightCategory').textContent = weightCategory;
+    document.getElementById('weightPrice').textContent = weightSupplement > 0 ? ('+' + weightSupplement + '$') : 'Inclus';
+
+    // Suppléments
+    let otherSupplements = 0;
+    let supplementsList = [];
+    if (supplements.difficultZone) { otherSupplements += 15; supplementsList.push('<i class="fa-solid fa-mountain text-blue-600"></i> Zone difficile (+15$)'); }
+    if (supplements.urgentDelivery) { otherSupplements += 25; supplementsList.push('<i class="fa-solid fa-truck-fast text-blue-600"></i> Livraison urgente (+25$)'); }
+
+    // Total (hors taxes)
+    const totalPrice = distancePrice + weightSupplement + otherSupplements;
+    document.getElementById('totalPrice').textContent = totalPrice.toFixed(2) + '$';
+
+    // Détail
+    let breakdown = `
+      <div class="grid md:grid-cols-2 gap-4 text-left">
+        <div>
+          <div class="font-semibold mb-2">📍 Transport</div>
+          <div class="text-sm">Distance (${currentDistance > 0 ? distanceCategory : '—'})</div>
+          <div class="text-lg font-bold">${distancePrice.toFixed(2)}$</div>
+        </div>
+        <div>
+          <div class="font-semibold mb-2">📦 Poids</div>
+          <div class="text-sm">${currentWeight.toFixed(1)} kg</div>
+          <div class="text-lg font-bold">${weightSupplement > 0 ? ('+' + weightSupplement + '$') : 'Inclus'}</div>
+        </div>
+        <div class="md:col-span-2">
+          <div class="font-semibold mb-2">⚡ Suppléments</div>
+          <div class="text-sm">${supplementsList.length ? supplementsList.join(', ') : 'Aucun'}</div>
+          <div class="text-lg font-bold">${otherSupplements > 0 ? ('+' + otherSupplements + '$') : '0$'}</div>
+        </div>
+      </div>`;
+    document.getElementById('breakdown').innerHTML = breakdown;
+  }
+
+  function requestQuote() {
+    const totalPrice = document.getElementById('totalPrice').textContent;
+    alert(`🎉 Merci pour votre intérêt !\n\nPrix estimé: ${totalPrice}\n\n📞 Notre équipe vous contactera sous peu pour finaliser votre devis.\n\n✨ D.A Transport - Votre partenaire de confiance !`);
+  }
+
+  /* --------- CARTE LEAFLET + ROUTAGE --------- */
+  let map, startMarker = null, endMarker = null, routingControl = null;
+  let placementMode = 'start'; // 'start' ou 'end'
+
+  function setDistanceFromRoute(km) {
+    currentDistance = km || 0;
+    document.getElementById('distanceValue').textContent = km ? km.toFixed(1) : '0';
+    calculatePrice();
+  }
+
+  function clearRoute() {
+    if (routingControl) { map.removeControl(routingControl); routingControl = null; }
+  }
+
+  function resetRoute() {
+    clearRoute();
+    if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+    if (endMarker)   { map.removeLayer(endMarker);   endMarker   = null; }
+    placementMode = 'start';
+    setDistanceFromRoute(0);
+  }
+
+  function placeStart(latlng) {
+    if (!startMarker) {
+      startMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Départ').openPopup();
+      startMarker.on('dragend', updateRoute);
+    } else {
+      startMarker.setLatLng(latlng);
+    }
+    updateRoute();
+  }
+
+  function placeEnd(latlng) {
+    if (!endMarker) {
+      endMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Destination').openPopup();
+      endMarker.on('dragend', updateRoute);
+    } else {
+      endMarker.setLatLng(latlng);
+    }
+    updateRoute();
+  }
+
+  function updateRoute() {
+    if (!(startMarker && endMarker)) { setDistanceFromRoute(0); return; }
+    clearRoute();
+    if (!L.Routing || !L.Routing.control) { console.warn('Leaflet Routing Machine non disponible'); return; }
+    routingControl = L.Routing.control({
+      waypoints: [ startMarker.getLatLng(), endMarker.getLatLng() ],
+      routeWhileDragging: true,
+      draggableWaypoints: true,
+      show: false,
+      addWaypoints: false,
+      router: L.Routing.osrmv1 && L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+      createMarker: () => null
+    })
+    .on('routesfound', (e) => {
+      const meters = e.routes[0].summary.totalDistance;
+      setDistanceFromRoute(meters / 1000);
+    })
+    .addTo(map);
+  }
+
+  /* --------- PRESETS (ALMA / SAGUENAY / QUÉBEC) --------- */
+  const presetCoords = {
+    alma: [48.550, -71.650],
+    saguenay: [48.428, -71.068],
+    quebec: [46.813, -71.208]
+  };
+
+  // Appelée par les boutons onclick="presetPlace('alma' | 'saguenay' | 'quebec')"
+  function presetPlace(city) {
+    const coords = presetCoords[city];
+    if (!coords || !map) return;
+
+    const ll = L.latLng(coords[0], coords[1]);
+
+    // Respecte le mode sélectionné par la toolbar (ou place logiquement)
+    if (placementMode === 'start' || !startMarker) {
+      placeStart(ll);
+      placementMode = 'end'; // bascule auto vers destination
+    } else if (placementMode === 'end' || !endMarker) {
+      placeEnd(ll);
+    } else {
+      // Les deux existent déjà → on remplace le point sélectionné par placementMode
+      if (placementMode === 'start') placeStart(ll);
+      else placeEnd(ll);
     }
 
-    function placeStart(latlng) {
-      if (!startMarker) {
-        startMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Départ').openPopup();
-        startMarker.on('dragend', updateRoute);
-      } else {
-        startMarker.setLatLng(latlng);
-      }
-      updateRoute();
+    map.setView(ll, 10);
+  }
+
+  function initMap() {
+    if (!window.L) {
+      console.error('Leaflet non chargé.');
+      return;
     }
-    function placeEnd(latlng) {
-      if (!endMarker) {
-        endMarker = L.marker(latlng, { draggable: true }).addTo(map).bindPopup('Destination').openPopup();
-        endMarker.on('dragend', updateRoute);
-      } else {
-        endMarker.setLatLng(latlng);
-      }
-      updateRoute();
-    }
+    const alma = [48.550, -71.650];
+    map = L.map('map', { tap: false }).setView(alma, 9);
 
-    function updateRoute() {
-      if (!(startMarker && endMarker)) { setDistanceFromRoute(0); return; }
-      clearRoute();
-      if (!L.Routing || !L.Routing.control) { console.warn('Leaflet Routing Machine non disponible'); return; }
-      routingControl = L.Routing.control({
-        waypoints: [ startMarker.getLatLng(), endMarker.getLatLng() ],
-        routeWhileDragging: true,
-        draggableWaypoints: true,
-        show: false,
-        addWaypoints: false,
-        router: L.Routing.osrmv1 && L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-        createMarker: () => null
-      })
-      .on('routesfound', (e) => {
-        const meters = e.routes[0].summary.totalDistance;
-        setDistanceFromRoute(meters / 1000);
-      })
-      .addTo(map);
-    }
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
 
-    function initMap() {
-      if (!window.L) {
-        console.error('Leaflet non chargé.');
-        return;
-      }
-      const alma = [48.550, -71.650];
-      map = L.map('map', { tap: false }).setView(alma, 9);
+    // S’assure que la carte prend bien tout l’espace
+    setTimeout(() => { map.invalidateSize(); }, 0);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(map);
+    // Empêche les conteneurs parents d’intercepter les événements
+    L.DomEvent.disableScrollPropagation(map.getContainer());
+    L.DomEvent.disableClickPropagation(map.getContainer());
 
-      // S’assure que la carte prend bien tout l’espace
-      setTimeout(() => { map.invalidateSize(); }, 0);
-
-      // Empêche les conteneurs parents d’intercepter les événements
-      L.DomEvent.disableScrollPropagation(map.getContainer());
-      L.DomEvent.disableClickPropagation(map.getContainer());
-
-      // Clic normal : place le point selon le mode sélectionné
-      map.on('click', (e) => {
-        if (placementMode === 'start') placeStart(e.latlng);
-        else placeEnd(e.latlng);
-        if (startMarker && !endMarker) placementMode = 'end'; // bascule auto
-      });
-
-      // Double-clic : place directement la destination
-      map.on('dblclick', (e) => { placeEnd(e.latlng); });
-
-      // Boutons de la toolbar
-      document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
-      document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
-      document.getElementById('btnReset').addEventListener('click', resetRoute);
-    }
-
-    window.addEventListener('load', function() {
-      initMap();
-      calculatePrice();
+    // Clic normal : place le point selon le mode sélectionné
+    map.on('click', (e) => {
+      if (placementMode === 'start') placeStart(e.latlng);
+      else placeEnd(e.latlng);
+      if (startMarker && !endMarker) placementMode = 'end'; // bascule auto
     });
-  </script>
-</body>
-</html>
 
+    // Double-clic : place directement la destination
+    map.on('dblclick', (e) => { placeEnd(e.latlng); });
+
+    // Boutons de la toolbar
+    document.getElementById('btnStart').addEventListener('click', () => { placementMode = 'start'; });
+    document.getElementById('btnEnd').addEventListener('click', () => { placementMode = 'end'; });
+    document.getElementById('btnReset').addEventListener('click', resetRoute);
+  }
+
+  window.addEventListener('load', function() {
+    initMap();
+    calculatePrice();
+  });
+</script>
